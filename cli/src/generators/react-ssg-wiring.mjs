@@ -78,10 +78,46 @@ export default routes;
   await fs.writeFile(routesFile, routesContent, 'utf8');
   console.log('· Wrote src/routes.jsx');
 
-  // Create a new SSG entry file
+  // Create a new SSG entry file with window mock for SSR safety
   const entryFile = path.join(srcDir, 'main.ssg.jsx');
+  
+  // MODIFICACIÓN CRÍTICA: Añadimos un polyfill para simular el navegador en el servidor.
+  // Esto define 'window', 'document', etc. si no existen, evitando errores como "window is not defined".
   const entryContent = `import { ViteReactSSG } from 'vite-react-ssg';
 import routes from './routes.jsx';
+
+// --- POLYFILL PARA SSR (Server Side Rendering) ---
+// Esto evita que la compilación falle cuando las librerías intentan acceder a window/document
+if (typeof window === 'undefined') {
+  const noop = () => {};
+  global.window = {
+    matchMedia: () => ({ matches: false, addListener: noop, removeListener: noop }),
+    scrollTo: noop,
+    addEventListener: noop,
+    removeEventListener: noop,
+    location: { href: '', origin: '' },
+    localStorage: { getItem: () => null, setItem: noop, removeItem: noop },
+    sessionStorage: { getItem: () => null, setItem: noop, removeItem: noop },
+  };
+  global.document = {
+    createElement: () => ({ style: {}, setAttribute: noop, appendChild: noop, classList: { add: noop, remove: noop } }),
+    head: { appendChild: noop },
+    body: { appendChild: noop, classList: { add: noop, remove: noop } },
+    addEventListener: noop,
+    removeEventListener: noop,
+    activeElement: { blur: noop, nodeName: '' },
+    querySelector: () => null,
+    querySelectorAll: () => [],
+    getElementById: () => null,
+    createEvent: () => ({ initEvent: noop }),
+    cookie: '',
+    documentElement: { style: {} },
+  };
+  global.navigator = { userAgent: 'node' };
+  global.requestAnimationFrame = (callback) => setTimeout(callback, 0);
+  global.cancelAnimationFrame = (id) => clearTimeout(id);
+}
+// ------------------------------------------------
 
 // Export createRoot for vite-react-ssg to bootstrap the app.
 export const createRoot = ViteReactSSG({ routes });

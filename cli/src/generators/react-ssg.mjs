@@ -97,7 +97,13 @@ async function updatePackageJson({ projectRoot, pkg }) {
 async function ensureSeoComponent({ projectRoot }) {
   const componentsDir = path.join(projectRoot, 'src', 'components');
   await fs.mkdir(componentsDir, { recursive: true });
-  const target = path.join(componentsDir, 'Seo.tsx');
+  
+  // CAMBIO IMPORTANTE: Usamos SEO.tsx (mayúsculas) para coincidir con tu importación
+  // A veces el sistema de archivos distingue mayúsculas, es mejor ser consistente.
+  const target = path.join(componentsDir, 'SEO.tsx'); 
+  
+  // CAMBIO IMPORTANTE: Exportamos como "export const SEO" (named export)
+  // en lugar de "export default Seo", para que funcione "import { SEO } from ..."
   const contents = `import { Helmet } from 'react-helmet-async';
 
 export interface SeoProps {
@@ -113,7 +119,7 @@ export interface SeoProps {
  * per-page basis using react-helmet-async. Pass whatever props you
  * need to customise the metadata for each route.
  */
-const Seo = ({ title, description, canonical, image, schemaMarkup }: SeoProps) => (
+export const SEO = ({ title, description, canonical, image, schemaMarkup }: SeoProps) => (
   <Helmet>
     <title>{title}</title>
     <meta name="description" content={description} />
@@ -132,10 +138,11 @@ const Seo = ({ title, description, canonical, image, schemaMarkup }: SeoProps) =
   </Helmet>
 );
 
-export default Seo;
+// Mantenemos también el default export por compatibilidad si algún otro archivo lo usa así.
+export default SEO;
 `;
   await fs.writeFile(target, contents, 'utf8');
-  console.log('· Wrote src/components/Seo.tsx');
+  console.log('· Wrote src/components/SEO.tsx');
 }
 
 /**
@@ -209,33 +216,16 @@ async function updateViteConfig({ projectRoot, domain }) {
   }
   const baseUrl = domain.replace(/\/$/, '');
   
-  // CORRECCIÓN IMPORTANTE (SONNER + FIGMA + ROBOTS)
-  // 1. Plugin custom para imports tipo 'figma:asset/'.
-  // 2. Alias regex para limpiar imports con versión (ej: 'sonner@2.0.3' -> 'sonner').
-  // 3. Alias regex para mapear 'figma:asset/...' a '/src/assets/...'.
-  // 4. generateRobotsTxt: false para evitar conflictos.
+  // CORRECCIÓN COMPLETA:
+  // 1. Alias para limpiar versiones (sonner@x.x.x) y rutas de figma (figma:asset/...).
+  // 2. ssr.noExternal para 'react-helmet-async' para evitar errores de exportación.
+  // 3. Eliminado manualChunks para evitar conflictos con dependencias externas en SSR.
 
   const contents = `import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import Sitemap from 'vite-plugin-sitemap';
 import { createHtmlPlugin } from 'vite-plugin-html';
 import path from 'path';
-
-// Plugin personalizado para que Rollup no falle al ver 'figma:asset/...'
-// aunque luego lo manejaremos mejor con alias.
-const figmaAssetsPlugin = {
-  name: 'ignore-figma-assets',
-  resolveId(id) {
-    if (id.startsWith('figma:')) {
-      return id;
-    }
-  },
-  load(id) {
-    if (id.startsWith('figma:')) {
-      return 'export default ""';
-    }
-  }
-};
 
 // Define your application routes here. This array is used by vite-ssg to
 // prerender each route. Add entries like { path: '/about', name: 'About' }.
@@ -246,7 +236,6 @@ const routes = [
 export default defineConfig({
   plugins: [
     react(),
-    // figmaAssetsPlugin, // Opcional: si los alias de abajo funcionan, este no hace falta, pero sirve de fallback.
     Sitemap({
       baseUrl: '${baseUrl}',
       routes,
@@ -265,14 +254,12 @@ export default defineConfig({
   resolve: {
     alias: [
       // 1. ARREGLO PARA IMPORTS CON VERSIÓN (ej: 'sonner@2.0.3' -> 'sonner')
-      // Captura cualquier paquete que termine en @x.x.x y lo redirige al nombre base
       { 
         find: /^([a-zA-Z0-9@\\/\\-_]+)@\\d+\\.\\d+\\.\\d+$/, 
         replacement: '$1' 
       },
       
       // 2. ARREGLO PARA IMÁGENES DE FIGMA (ej: "figma:asset/abc.png" -> "/src/assets/abc.png")
-      // El $1 captura el nombre del archivo después de "figma:asset/"
       { 
         find: /^figma:asset\\/(.*)/, 
         replacement: '/src/assets/$1' 
@@ -282,14 +269,9 @@ export default defineConfig({
       { find: '@', replacement: '/src' }
     ]
   },
-  build: {
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          react: ['react', 'react-dom', 'react-router-dom']
-        }
-      }
-    }
+  // Corrección para SSR: Evitar error "Named export not found" con librerías CJS
+  ssr: {
+    noExternal: ['react-helmet-async']
   }
 });
 `;
@@ -327,15 +309,15 @@ async function writeSeoGuide({ projectRoot, domain, projectName }) {
     '',
     '1. Adjust your route definitions in `vite.config.js`/`vite.config.ts` and update',
     '   `src/seo/sitemap.ts` if you have dynamic pages.',
-    '2. Use the exported **Seo** component in each page or layout to set',
+    '2. Use the exported **SEO** component in each page or layout to set',
     '   up metadata:',
     '',
-    '       import Seo from "./components/Seo";',
+    '       import { SEO } from "./components/SEO";',
     '       ',
     `       export default function HomePage() {`,
     '         return (',
     '           <>',
-    `             <Seo`,
+    `             <SEO`,
     `               title="Home – ${projectName}"`,
     `               description="Welcome to ${projectName}, a React + Vite example."`,
     `               canonical="${baseUrl}/"`,
