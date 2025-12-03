@@ -209,13 +209,15 @@ async function updateViteConfig({ projectRoot, domain }) {
   }
   const baseUrl = domain.replace(/\/$/, '');
   
-  // CORRECCIÓ AQUÍ: Canviem la importació de 'vite-plugin-sitemap'
-  // Abans: import { ViteSitemap } from ... (Error: is not a function)
-  // Ara: import Sitemap from ... (Default import)
+  // CORRECCIÓN IMPORTANTE:
+  // 1. Se añade 'path' para usar en alias si fuera necesario (aunque usamos strings aquí).
+  // 2. Se configura 'resolve.alias' para manejar los imports de "figma:asset/" automáticamente.
+  // 3. Se desactiva 'generateRobotsTxt' para evitar el error ENOENT.
   const contents = `import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import Sitemap from 'vite-plugin-sitemap';
 import { createHtmlPlugin } from 'vite-plugin-html';
+import path from 'path';
 
 // Define your application routes here. This array is used by vite-ssg to
 // prerender each route. Add entries like { path: '/about', name: 'About' }.
@@ -229,7 +231,7 @@ export default defineConfig({
     Sitemap({
       baseUrl: '${baseUrl}',
       routes,
-      generateRobotsTxt: true
+      generateRobotsTxt: false // Desactivado porque ya lo generamos manualmente en public/
     }),
     createHtmlPlugin({
       minify: true,
@@ -241,6 +243,15 @@ export default defineConfig({
       }
     })
   ],
+  resolve: {
+    alias: [
+      // Regla mágica para convertir "figma:asset/abc.png" -> "/src/assets/abc.png"
+      // El $1 captura el nombre del archivo después de "figma:asset/"
+      { find: /^figma:asset\\/(.*)/, replacement: '/src/assets/$1' },
+      // Alias estándar @ -> src
+      { find: '@', replacement: '/src' }
+    ]
+  },
   build: {
     rollupOptions: {
       output: {
