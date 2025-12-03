@@ -16,6 +16,7 @@ function usage() {
 }
 
 // Helper per executar comandes de forma segura sense shell
+// Això evita injecció de comandes (ex: "file.zip; rm -rf /")
 function runCommand(command, args, options = {}) {
   const result = spawnSync(command, args, { stdio: 'inherit', ...options });
   if (result.error) {
@@ -61,17 +62,48 @@ async function main() {
     runCommand('unzip', ['-qq', zipPath, '-d', tempDir]);
   } catch (err) {
     console.error(`Error extracting zip: ${err.message}`);
+    // Netejar abans de sortir
+    try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch (e) {}
     process.exit(1);
   }
+
+  // --- NOVA LÒGICA: Detectar subcarpeta (Project Root Detection) ---
+  let projectRoot = tempDir;
+  try {
+    const files = fs.readdirSync(tempDir);
+    // Ignorem arxius de sistema tipus .DS_Store o __MACOSX si n'hi ha
+    const validFiles = files.filter(f => !f.startsWith('.') && f !== '__MACOSX');
+
+    // Si només hi ha 1 element i és una carpeta, assumim que és l'arrel del projecte
+    if (validFiles.length === 1) {
+      const nestedPath = path.join(tempDir, validFiles[0]);
+      if (fs.statSync(nestedPath).isDirectory()) {
+        console.log(`· Detected nested project folder: ${validFiles[0]}`);
+        projectRoot = nestedPath;
+      }
+    }
+  } catch (e) {
+    console.warn('Warning: Could not detect nested folder structure.');
+  }
+
+  // Verificació final: El package.json ha de ser on diem que és
+  const pkgPath = path.join(projectRoot, 'package.json');
+  if (!fs.existsSync(pkgPath)) {
+     console.error('Error: package.json not found in the extracted files.');
+     console.error(`Looked in: ${projectRoot}`);
+     try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch (e) {}
+     process.exit(1);
+  }
+  // ----------------------------------------------------------------
 
   const cliPath = path.join(__dirname, 'cli.mjs');
   
   try {
-    // 2. Executar CLI intern de forma segura
+    // 2. Executar CLI intern de forma segura passant el projectRoot correcte
     console.log('· Running optimization...');
     runCommand('node', [
       cliPath, 
-      tempDir, 
+      projectRoot, // IMPORTANT: Passem projectRoot, no tempDir
       `--domain=${domain}`, 
       `--strategy=${strategy}`
     ]);
@@ -80,26 +112,24 @@ async function main() {
     process.exit(1);
   }
 
-  // Patch package.json (Mantinc la teva lògica, sembla correcta)
-  const pkgPath = path.join(tempDir, 'package.json');
+  // Patch package.json (versió vite-bundle-visualizer)
   try {
-    if (fs.existsSync(pkgPath)) {
-      const pkgRaw = fs.readFileSync(pkgPath, 'utf8');
-      const pkg = JSON.parse(pkgRaw);
-      let patched = false;
-      const fixVersion = (deps) => {
-        if (!deps) return;
-        const key = 'vite-bundle-visualizer';
-        if (deps[key] && /^\^?1\.\d+\.\d+/.test(deps[key]) === false) {
-          deps[key] = '^1.2.1';
-          patched = true;
-        }
-      };
-      fixVersion(pkg.dependencies);
-      fixVersion(pkg.devDependencies);
-      if (patched) {
-        fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2), 'utf8');
+    const pkgRaw = fs.readFileSync(pkgPath, 'utf8');
+    const pkg = JSON.parse(pkgRaw);
+    let patched = false;
+    const fixVersion = (deps) => {
+      if (!deps) return;
+      const key = 'vite-bundle-visualizer';
+      if (deps[key] && /^\^?1\.\d+\.\d+/.test(deps[key]) === false) {
+        deps[key] = '^1.2.1';
+        patched = true;
       }
+    };
+    fixVersion(pkg.dependencies);
+    fixVersion(pkg.devDependencies);
+    if (patched) {
+      fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2), 'utf8');
+      console.log('· Patched package.json dependencies.');
     }
   } catch (e) {
     console.warn('Warning: Could not patch package.json', e.message);
@@ -108,28 +138,28 @@ async function main() {
   if (buildFlag) {
     try {
       console.log('· Installing dependencies...');
-      // npm install ha de córrer amb shell: true a Windows de vegades, però spawnSync sol gestionar-ho bé si es troba al PATH.
-      // Per seguretat en sistemes unix, millor array. En Windows 'npm.cmd'.
       const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-      runCommand(npmCmd, ['install'], { cwd: tempDir });
+      // Executem dins de projectRoot
+      runCommand(npmCmd, ['install'], { cwd: projectRoot });
       
       console.log('· Running build...');
-      runCommand(npmCmd, ['run', 'build'], { cwd: tempDir });
+      runCommand(npmCmd, ['run', 'build'], { cwd: projectRoot });
     } catch (err) {
       console.error('Error during install/build:', err.message);
     }
   }
 
+  // Preparar sortida
   const { name: baseName, dir: baseDir } = path.parse(zipPath);
   const outputName = `${baseName}-seo-ssg.zip`;
   const outputPath = path.join(baseDir, outputName);
 
   try {
     // 3. Zip de sortida segur
-    // Nota: 'zip' requereix canviar de directori o usar -j, però aquí volem estructura recursiva.
-    // Spawn permet especificar { cwd: tempDir }
+    // IMPORTANT: Comprimim des de projectRoot per eliminar la carpeta niada si n'hi havia una.
+    // Així el ZIP resultant sempre té el package.json a l'arrel (estructura neta).
     console.log('· Compressing output...');
-    runCommand('zip', ['-rq', outputPath, '.'], { cwd: tempDir });
+    runCommand('zip', ['-rq', outputPath, '.'], { cwd: projectRoot });
   } catch (err) {
     console.error(`Error creating output zip: ${err.message}`);
     process.exit(1);
