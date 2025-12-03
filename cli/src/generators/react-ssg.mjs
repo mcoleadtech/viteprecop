@@ -22,8 +22,11 @@ const SEO_DEPENDENCIES = {
 // of writing. Using ^1.9.0 would break npm install. See
 // https://registry.npmjs.org/vite-bundle-visualizer for available
 // versions. We pin to the latest 1.2.x to avoid install errors.
+// Also adding @vitejs/plugin-react as it is required by the new vite config.
 const SEO_DEV_DEPENDENCIES = {
-  'vite-bundle-visualizer': '^1.2.1'
+  'vite-bundle-visualizer': '^1.2.1',
+  '@vitejs/plugin-react': '^4.2.1',
+  'vite': '^5.0.0'
 };
 
 /**
