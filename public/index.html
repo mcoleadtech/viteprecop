@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Optimiza tu proyecto Vite</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Optimiza tu proyecto Vite</h1>
+    <p>Selecciona un archivo ZIP de tu proyecto Vite y genera una versión con pre‑rendering y SEO lista para producción.</p>
+    <form id="uploadForm">
+      <div class="form-group">
+        <label for="zipFile">Archivo ZIP del proyecto:</label>
+        <input type="file" id="zipFile" name="zipFile" accept=".zip" required>
+      </div>
+      <div class="form-group">
+        <label for="domain">Dominio (por ejemplo https://tudominio.com):</label>
+        <input type="text" id="domain" name="domain" value="https://example.com">
+      </div>
+      <div class="form-group">
+        <label for="strategy">Estrategia de prerender:</label>
+        <select id="strategy" name="strategy">
+          <option value="react">React</option>
+          <option value="preact">Preact</option>
+        </select>
+      </div>
+      <button id="submitBtn" type="submit">Optimizar</button>
+    </form>
+    <div id="status" class="status" style="display:none;"></div>
+    <div id="error" class="error" style="display:none;"></div>
+    <div id="suggestions" class="suggestions" style="display:none;">
+      <h2>Siguientes pasos</h2>
+      <ul>
+        <li>Sube el ZIP generado a <strong>GitHub</strong> o <strong>Bitbucket</strong> para gestionar el código fuente.</li>
+        <li>Conecta tu repositorio a un servicio de despliegue estático como <strong>Vercel</strong> o Netlify para publicar tu web.</li>
+        <li>Si prefieres compilar localmente, descomprime el ZIP y ejecuta <code>npm install</code> y <code>npm run build</code>.</li>
+        <li>Consulta la documentación de tu plataforma de despliegue para asociar un dominio personalizado.</li>
+      </ul>
+    </div>
+  </div>
+  <script src="script.js"></script>
+</body>
+</html>
