@@ -209,15 +209,33 @@ async function updateViteConfig({ projectRoot, domain }) {
   }
   const baseUrl = domain.replace(/\/$/, '');
   
-  // CORRECCIÓN IMPORTANTE:
-  // 1. Se añade 'path' para usar en alias si fuera necesario (aunque usamos strings aquí).
-  // 2. Se configura 'resolve.alias' para manejar los imports de "figma:asset/" automáticamente.
-  // 3. Se desactiva 'generateRobotsTxt' para evitar el error ENOENT.
+  // CORRECCIÓN IMPORTANTE (SONNER + FIGMA + ROBOTS)
+  // 1. Plugin custom para imports tipo 'figma:asset/'.
+  // 2. Alias regex para limpiar imports con versión (ej: 'sonner@2.0.3' -> 'sonner').
+  // 3. Alias regex para mapear 'figma:asset/...' a '/src/assets/...'.
+  // 4. generateRobotsTxt: false para evitar conflictos.
+
   const contents = `import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import Sitemap from 'vite-plugin-sitemap';
 import { createHtmlPlugin } from 'vite-plugin-html';
 import path from 'path';
+
+// Plugin personalizado para que Rollup no falle al ver 'figma:asset/...'
+// aunque luego lo manejaremos mejor con alias.
+const figmaAssetsPlugin = {
+  name: 'ignore-figma-assets',
+  resolveId(id) {
+    if (id.startsWith('figma:')) {
+      return id;
+    }
+  },
+  load(id) {
+    if (id.startsWith('figma:')) {
+      return 'export default ""';
+    }
+  }
+};
 
 // Define your application routes here. This array is used by vite-ssg to
 // prerender each route. Add entries like { path: '/about', name: 'About' }.
@@ -228,6 +246,7 @@ const routes = [
 export default defineConfig({
   plugins: [
     react(),
+    // figmaAssetsPlugin, // Opcional: si los alias de abajo funcionan, este no hace falta, pero sirve de fallback.
     Sitemap({
       baseUrl: '${baseUrl}',
       routes,
@@ -245,10 +264,21 @@ export default defineConfig({
   ],
   resolve: {
     alias: [
-      // Regla mágica para convertir "figma:asset/abc.png" -> "/src/assets/abc.png"
+      // 1. ARREGLO PARA IMPORTS CON VERSIÓN (ej: 'sonner@2.0.3' -> 'sonner')
+      // Captura cualquier paquete que termine en @x.x.x y lo redirige al nombre base
+      { 
+        find: /^([a-zA-Z0-9@\\/\\-_]+)@\\d+\\.\\d+\\.\\d+$/, 
+        replacement: '$1' 
+      },
+      
+      // 2. ARREGLO PARA IMÁGENES DE FIGMA (ej: "figma:asset/abc.png" -> "/src/assets/abc.png")
       // El $1 captura el nombre del archivo después de "figma:asset/"
-      { find: /^figma:asset\\/(.*)/, replacement: '/src/assets/$1' },
-      // Alias estándar @ -> src
+      { 
+        find: /^figma:asset\\/(.*)/, 
+        replacement: '/src/assets/$1' 
+      },
+      
+      // 3. Alias estándar
       { find: '@', replacement: '/src' }
     ]
   },
