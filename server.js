@@ -1,105 +1,118 @@
 const express = require('express');
 const multer  = require('multer');
 const path    = require('path');
-const fs      = require('fs');
-const { exec } = require('child_process');
+const fs      = require('fs').promises; // Utilitzem la versió asíncrona
+const { execFile } = require('child_process');
 
 const app = express();
 const upload = multer({ dest: 'uploads/' });
 
-// Parse URL‑encoded bodies (form fields)
 app.use(express.urlencoded({ extended: true }));
-// Serve static files from the public directory
 app.use(express.static('public'));
 
-/**
- * Handle uploaded ZIP file.  Uses vite-seo-bootstrap's apply-zip script to
- * convert a Vite project zip into an SEO/SSG optimised version.  The converted
- * archive is returned as a file download.
- */
-app.post('/convert', upload.single('zipFile'), (req, res) => {
-    const domain   = req.body.domain   || 'https://example.com';
-    const strategy = req.body.strategy || 'react';
+// Llista blanca per validar l'estratègia
+const ALLOWED_STRATEGIES = ['react', 'preact'];
 
-    if (!req.file) {
-        res.status(400).send('No zip file uploaded');
-        return;
+app.post('/convert', upload.single('zipFile'), async (req, res) => {
+    // 1. Validació d'entrada
+    let domain = req.body.domain || 'https://example.com';
+    let strategy = req.body.strategy || 'react';
+
+    // Neteja bàsica del domini (evitar caràcters estranys)
+    if (!/^https?:\/\/[a-zA-Z0-9.-]+(?::\d+)?$/.test(domain)) {
+        // Si el format no és vàlid, tornem al default o donem error
+        console.warn('Domini invàlid, usant default');
+        domain = 'https://example.com';
     }
 
-    // Determine original filename (without extension) for a user‑friendly output name
-    const origName  = path.parse(req.file.originalname).name;
-    const outName   = `${origName}-seo-ssg.zip`;
+    if (!ALLOWED_STRATEGIES.includes(strategy)) {
+        if (req.file) await fs.unlink(req.file.path).catch(() => {});
+        return res.status(400).send('Invalid strategy provided.');
+    }
 
-    // Multer stores the uploaded file without extension in req.file.path.
-    // The CLI script expects the file to exist, but names its output based on
-    // the hashed filename (not the original name). To keep track of the CLI
-    // output, rename the uploaded file to include its original extension.  This
-    // ensures that path.parse() inside the CLI uses a predictable base name.
+    if (!req.file) {
+        return res.status(400).send('No zip file uploaded');
+    }
+
+    const origName  = path.parse(req.file.originalname).name;
+    // Sanititzem el nom de sortida per seguretat
+    const safeOrigName = origName.replace(/[^a-zA-Z0-9_-]/g, '_'); 
+    const outName   = `${safeOrigName}-seo-ssg.zip`;
+
     const uploadedTempPath = req.file.path;
     const originalExt      = path.extname(req.file.originalname) || '.zip';
     const renamedInputPath = uploadedTempPath + originalExt;
+
+    // Rutes per neteja final
+    const filesToClean = [uploadedTempPath, renamedInputPath];
+
     try {
-        fs.renameSync(uploadedTempPath, renamedInputPath);
-    } catch (renameErr) {
-        console.error('Error renaming uploaded file:', renameErr);
-        res.status(500).send('Server error processing upload');
-        return;
-    }
+        // 2. Renombrar fitxer (Asíncron)
+        await fs.rename(uploadedTempPath, renamedInputPath);
 
-    // Path to the CLI script inside this project
-    const cliPath = path.join(__dirname, 'cli', 'bin', 'apply-zip.mjs');
-
-    // Execute the CLI script.  The CLI will produce its output based on the
-    // renamed hashed filename; after it completes we will rename it to a
-    // user‑friendly name based on the original filename.  Quotes are used
-    // around paths to handle spaces or special characters.
-    const cmd = `node '${cliPath}' '${renamedInputPath}' --domain='${domain}' --strategy=${strategy}`;
-    exec(cmd, (err) => {
-        if (err) {
-            console.error('Error running vite-seo-bootstrap:', err);
-            res.status(500).send('Error optimising the project');
-            return;
-        }
+        const cliPath = path.join(__dirname, 'cli', 'bin', 'apply-zip.mjs');
         const dir = path.dirname(renamedInputPath);
-        // The CLI uses the base name of renamedInputPath for its output
+        
+        // El script CLI genera un fitxer basat en el nom d'entrada hash
         const hashedBaseName = path.parse(renamedInputPath).name;
         const cliOutName     = `${hashedBaseName}-seo-ssg.zip`;
         const cliOutPath     = path.join(dir, cliOutName);
-
         const outputFullPath = path.join(dir, outName);
+        
+        filesToClean.push(outputFullPath, cliOutPath);
 
-        // If the CLI output exists, rename it to the user‑friendly name
+        // 3. Execució segura amb execFile (sense shell)
+        const args = [
+            cliPath, 
+            renamedInputPath, 
+            `--domain=${domain}`, 
+            `--strategy=${strategy}`
+        ];
+
+        // Prometifiquem execFile per usar await
+        await new Promise((resolve, reject) => {
+            execFile('node', args, (error, stdout, stderr) => {
+                if (error) {
+                    console.error('CLI Error:', stderr);
+                    reject(error);
+                } else {
+                    resolve(stdout);
+                }
+            });
+        });
+
+        // 4. Comprovar i moure el resultat (Asíncron)
         try {
-            if (fs.existsSync(cliOutPath)) {
-                fs.renameSync(cliOutPath, outputFullPath);
-            }
-        } catch (renameErr) {
-            console.error('Error renaming CLI output:', renameErr);
+            await fs.access(cliOutPath); // Comprova si existeix
+            await fs.rename(cliOutPath, outputFullPath);
+        } catch (e) {
+            throw new Error('El fitxer de sortida no s\'ha generat correctament.');
         }
 
-        // Send the file for download
-        res.download(outputFullPath, outName, (downloadErr) => {
-            // Clean up temporary files after download
-            try {
-                if (fs.existsSync(renamedInputPath)) {
-                    fs.unlinkSync(renamedInputPath);
-                }
-                if (fs.existsSync(outputFullPath)) {
-                    fs.unlinkSync(outputFullPath);
-                }
-            } catch (cleanupErr) {
-                console.error('Error during cleanup:', cleanupErr);
-            }
+        // 5. Enviar fitxer
+        res.download(outputFullPath, outName, async (downloadErr) => {
             if (downloadErr) {
                 console.error('Error sending file:', downloadErr);
             }
+            // Neteja de fitxers (Asíncrona i sense bloquejar)
+            for (const f of filesToClean) {
+                await fs.unlink(f).catch(() => {}); // Ignorem errors si el fitxer ja no hi és
+            }
         });
-    });
+
+    } catch (err) {
+        console.error('Server processing error:', err);
+        // Intentar netejar en cas d'error
+        for (const f of filesToClean) {
+            await fs.unlink(f).catch(() => {});
+        }
+        
+        if (!res.headersSent) {
+            res.status(500).send('Server error processing upload');
+        }
+    }
 });
 
-// Start the server.  If the desired port is in use, fall back to the next
-// available port.  Allows the user to override via the PORT environment
-// variable.  Logs the final chosen port to the console.
 const requestedPort = parseInt(process.env.PORT, 10) || 3000;
 function startServer(port) {
     const server = app.listen(port, () => {
