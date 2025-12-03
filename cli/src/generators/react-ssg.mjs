@@ -16,16 +16,15 @@ const SEO_DEPENDENCIES = {
   'react-helmet-async': '^2.0.0',
   'vite-plugin-html': '^3.2.1',
   'vite-plugin-sitemap': '^0.7.1',
-  'vite-ssg': '^0.24.0'
+  // 'vite-ssg': '^0.24.0' // Eliminat: vite-ssg és per a Vue, no per a React.
 };
 // NOTE: vite-bundle-visualizer only publishes up to 1.2.x at the time
 // of writing. Using ^1.9.0 would break npm install. See
 // https://registry.npmjs.org/vite-bundle-visualizer for available
 // versions. We pin to the latest 1.2.x to avoid install errors.
-// Also adding @vitejs/plugin-react as it is required by the new vite config.
 const SEO_DEV_DEPENDENCIES = {
   'vite-bundle-visualizer': '^1.2.1',
-  '@vitejs/plugin-react': '^4.2.1',
+  '@vitejs/plugin-react': '^4.2.1', // <--- IMPORTANT: Això soluciona l'error de mòdul no trobat
   'vite': '^5.0.0'
 };
 
@@ -209,11 +208,14 @@ async function updateViteConfig({ projectRoot, domain }) {
     target = jsConfig;
   }
   const baseUrl = domain.replace(/\/$/, '');
+  
+  // CORRECCIÓ AQUÍ: Canviem la importació de 'vite-plugin-sitemap'
+  // Abans: import { ViteSitemap } from ... (Error: is not a function)
+  // Ara: import Sitemap from ... (Default import)
   const contents = `import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { ViteSitemap } from 'vite-plugin-sitemap';
+import Sitemap from 'vite-plugin-sitemap';
 import { createHtmlPlugin } from 'vite-plugin-html';
-import { viteSSG } from 'vite-ssg/serialized-data';
 
 // Define your application routes here. This array is used by vite-ssg to
 // prerender each route. Add entries like { path: '/about', name: 'About' }.
@@ -224,10 +226,7 @@ const routes = [
 export default defineConfig({
   plugins: [
     react(),
-    viteSSG({
-      includedRoutes: () => routes
-    }),
-    ViteSitemap({
+    Sitemap({
       baseUrl: '${baseUrl}',
       routes,
       generateRobotsTxt: true
