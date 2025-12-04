@@ -1,49 +1,93 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Optimiza tu proyecto Vite</title>
   <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
   <div class="container">
     <h1>Optimiza tu proyecto Vite</h1>
-    <p>Selecciona un archivo ZIP de tu proyecto Vite y genera una versión con pre‑rendering y SEO lista para producción.</p>
-    <form id="uploadForm">
-      <div class="form-group">
-        <label for="zipFile">Archivo ZIP del proyecto:</label>
-        <input type="file" id="zipFile" name="zipFile" accept=".zip" required>
-      </div>
-      <div class="form-group">
-        <label for="domain">Dominio (por ejemplo https://tudominio.com):</label>
-        <input type="text" id="domain" name="domain" value="https://example.com">
-      </div>
-      <div class="form-group">
-        <label for="strategy">Estrategia de prerender:</label>
-        <select id="strategy" name="strategy">
-          <option value="react">React</option>
-          <option value="preact">Preact</option>
-        </select>
-      </div>
-      <div class="form-group" style="margin-top: 10px; display: flex; align-items: center; gap: 10px;">
-        <input type="checkbox" id="build" name="build" style="width: auto;">
-        <label for="build" style="margin: 0; font-weight: normal;">Build & Return Static Site (Slower)</label>
-      </div>
-      <button id="submitBtn" type="submit">Optimizar</button>
-    </form>
+    <p>Selecciona un archivo ZIP de tu proyecto Vite y genera una versión con pre‑rendering y SEO lista para producción.
+    </p>
+    <div class="tabs">
+      <button class="tab-btn active" onclick="openTab(event, 'tab-zip')">Upload Zip</button>
+      <button class="tab-btn" onclick="openTab(event, 'tab-local')">Local Folder</button>
+    </div>
+
+    <div id="tab-zip" class="tab-content active">
+      <form id="uploadForm">
+        <div class="form-group">
+          <label for="zipFile">Archivo ZIP del proyecto:</label>
+          <input type="file" id="zipFile" name="zipFile" accept=".zip" required>
+        </div>
+        <div class="form-group">
+          <label for="domain">Dominio (por ejemplo https://tudominio.com):</label>
+          <input type="text" id="domain" name="domain" value="https://example.com">
+        </div>
+        <div class="form-group">
+          <label for="strategy">Estrategia de prerender:</label>
+          <select id="strategy" name="strategy">
+            <option value="react">React</option>
+            <option value="preact">Preact</option>
+          </select>
+        </div>
+        <div class="form-group" style="margin-top: 10px; display: flex; align-items: center; gap: 10px;">
+          <input type="checkbox" id="build" name="build" style="width: auto;">
+          <label for="build" style="margin: 0; font-weight: normal;">Build & Return Static Site (Slower)</label>
+        </div>
+        <button id="submitBtn" type="submit">Optimizar Zip</button>
+      </form>
+    </div>
+
+    <div id="tab-local" class="tab-content">
+      <form id="localForm">
+        <div class="form-group">
+          <label for="projectPath">Ruta absoluta del proyecto (Local):</label>
+          <input type="text" id="projectPath" name="projectPath" placeholder="/Users/me/my-project" required>
+        </div>
+        <div class="form-group">
+          <label for="domainLocal">Dominio:</label>
+          <input type="text" id="domainLocal" name="domain" value="https://example.com">
+        </div>
+        <div class="form-group">
+          <label for="strategyLocal">Estrategia:</label>
+          <select id="strategyLocal" name="strategy">
+            <option value="react">React</option>
+            <option value="preact">Preact</option>
+          </select>
+        </div>
+        <div class="form-group" style="margin-top: 10px; display: flex; align-items: center; gap: 10px;">
+          <input type="checkbox" id="buildLocal" name="build" style="width: auto;">
+          <label for="buildLocal" style="margin: 0; font-weight: normal;">Build Project</label>
+        </div>
+        <div class="warning"
+          style="background: #fff3cd; color: #856404; padding: 10px; margin-bottom: 10px; border-radius: 4px; font-size: 0.9em;">
+          ⚠️ <strong>Warning:</strong> This will modify files in the specified folder directly. Ensure you have a backup
+          or git commit.
+        </div>
+        <button id="submitLocalBtn" type="submit">Optimizar Carpeta Local</button>
+      </form>
+    </div>
     <div id="status" class="status" style="display:none;"></div>
     <div id="error" class="error" style="display:none;"></div>
     <div id="suggestions" class="suggestions" style="display:none;">
       <h2>Siguientes pasos</h2>
       <ul>
-        <li>Sube el ZIP generado a <strong>GitHub</strong> o <strong>Bitbucket</strong> para gestionar el código fuente.</li>
-        <li>Conecta tu repositorio a un servicio de despliegue estático como <strong>Vercel</strong> o Netlify para publicar tu web.</li>
-        <li>Si prefieres compilar localmente, descomprime el ZIP y ejecuta <code>npm install</code> y <code>npm run build</code>.</li>
+        <li>Sube el ZIP generado a <strong>GitHub</strong> o <strong>Bitbucket</strong> para gestionar el código fuente.
+        </li>
+        <li>Conecta tu repositorio a un servicio de despliegue estático como <strong>Vercel</strong> o Netlify para
+          publicar tu web.</li>
+        <li>Si prefieres compilar localmente, descomprime el ZIP y ejecuta <code>npm install</code> y
+          <code>npm run build</code>.</li>
         <li>Consulta la documentación de tu plataforma de despliegue para asociar un dominio personalizado.</li>
       </ul>
     </div>
   </div>
   <script src="script.js"></script>
 </body>
+
 </html>

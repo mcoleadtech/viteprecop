@@ -120,6 +120,53 @@ app.post('/convert', upload.single('zipFile'), async (req, res) => {
     }
 });
 
+app.post('/optimize-local', express.json(), async (req, res) => {
+    const { projectPath, domain = 'https://example.com', strategy = 'react', build } = req.body;
+    const doBuild = build === true || build === 'on';
+
+    if (!projectPath) {
+        return res.status(400).json({ error: 'Project path is required' });
+    }
+
+    try {
+        // Verify path exists and is directory
+        const stats = await fs.stat(projectPath);
+        if (!stats.isDirectory()) {
+            return res.status(400).json({ error: 'Path is not a directory' });
+        }
+    } catch (e) {
+        return res.status(400).json({ error: 'Path does not exist' });
+    }
+
+    const cliPath = path.join(__dirname, 'cli', 'bin', 'optimize.mjs');
+    const args = [
+        cliPath,
+        projectPath,
+        `--domain=${domain}`,
+        `--strategy=${strategy}`
+    ];
+
+    if (doBuild) {
+        args.push('--build');
+    }
+
+    console.log(`Running local optimization on: ${projectPath}`);
+
+    execFile('node', args, (error, stdout, stderr) => {
+        if (error) {
+            console.error('CLI Error:', stderr);
+            return res.status(500).json({ error: 'Optimization failed', details: stderr });
+        }
+
+        res.json({
+            success: true,
+            message: 'Optimization completed successfully!',
+            output: stdout,
+            built: doBuild
+        });
+    });
+});
+
 const requestedPort = parseInt(process.env.PORT, 10) || 3000;
 function startServer(port) {
     const server = app.listen(port, () => {
