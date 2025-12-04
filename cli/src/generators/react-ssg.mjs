@@ -242,6 +242,7 @@ const routes = [
 ];
 
 export default defineConfig({
+  base: './', // Permet que els assets es carreguin correctament en local (file://)
   plugins: [
     react(),
     Sitemap({

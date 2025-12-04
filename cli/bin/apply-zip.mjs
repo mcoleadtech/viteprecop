@@ -33,7 +33,7 @@ async function main() {
 
   const zipArg = args[0];
   const zipPath = path.resolve(zipArg);
-  
+
   if (!fs.existsSync(zipPath)) {
     console.error('Error: specified file does not exist.');
     process.exit(1);
@@ -64,7 +64,7 @@ async function main() {
   } catch (err) {
     console.error(`Error extracting zip: ${err.message}`);
     // Netejar abans de sortir
-    try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch (e) {}
+    try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch (e) { }
     process.exit(1);
   }
 
@@ -90,22 +90,22 @@ async function main() {
   // Verificació final: El package.json ha de ser on diem que és
   const pkgPath = path.join(projectRoot, 'package.json');
   if (!fs.existsSync(pkgPath)) {
-     console.error('Error: package.json not found in the extracted files.');
-     console.error(`Looked in: ${projectRoot}`);
-     try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch (e) {}
-     process.exit(1);
+    console.error('Error: package.json not found in the extracted files.');
+    console.error(`Looked in: ${projectRoot}`);
+    try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch (e) { }
+    process.exit(1);
   }
   // ----------------------------------------------------------------
 
   const cliPath = path.join(__dirname, 'cli.mjs');
-  
+
   try {
     // 2. Executar CLI intern de forma segura passant el projectRoot correcte
     console.log('· Running optimization...');
     runCommand('node', [
-      cliPath, 
+      cliPath,
       projectRoot, // IMPORTANT: Passem projectRoot, no tempDir
-      `--domain=${domain}`, 
+      `--domain=${domain}`,
       `--strategy=${strategy}`
     ]);
   } catch (err) {
@@ -138,30 +138,48 @@ async function main() {
 
   if (buildFlag) {
     try {
-      console.log('· Installing dependencies...');
+      console.log('· Installing dependencies (this may take a while)...');
       const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
       // Executem dins de projectRoot
       runCommand(npmCmd, ['install'], { cwd: projectRoot });
-      
+
       console.log('· Running build...');
       runCommand(npmCmd, ['run', 'build'], { cwd: projectRoot });
     } catch (err) {
       console.error('Error during install/build:', err.message);
+      // If build fails, we might still want to return the source code or error out.
+      // For now, let's error out to let the user know.
+      process.exit(1);
     }
   }
 
   // Preparar sortida
   const { name: baseName, dir: baseDir } = path.parse(zipPath);
-  const outputName = `${baseName}-seo-ssg.zip`;
+  // If built, append -dist to the name
+  const outputName = buildFlag ? `${baseName}-dist.zip` : `${baseName}-seo-ssg.zip`;
   const outputPath = path.join(baseDir, outputName);
 
   try {
     // 3. Zip de sortida segur amb adm-zip
     console.log('· Compressing output...');
     const zip = new AdmZip();
-    // Afegim la carpeta local (projectRoot) al zip.
-    // addLocalFolder afegeix el contingut de la carpeta a l'arrel del zip si el segon argument és buit.
-    zip.addLocalFolder(projectRoot);
+
+    if (buildFlag) {
+      // If built, we only want to zip the dist folder
+      const distPath = path.join(projectRoot, 'dist');
+      if (fs.existsSync(distPath)) {
+        console.log('· Zipping dist folder...');
+        zip.addLocalFolder(distPath);
+      } else {
+        console.error('Error: dist folder not found after build.');
+        process.exit(1);
+      }
+    } else {
+      // Afegim la carpeta local (projectRoot) al zip.
+      // addLocalFolder afegeix el contingut de la carpeta a l'arrel del zip si el segon argument és buit.
+      zip.addLocalFolder(projectRoot);
+    }
+
     zip.writeZip(outputPath);
   } catch (err) {
     console.error(`Error creating output zip: ${err.message}`);
@@ -171,7 +189,7 @@ async function main() {
   // Neteja del directori temporal
   try {
     fs.rmSync(tempDir, { recursive: true, force: true });
-  } catch (e) {}
+  } catch (e) { }
 
   console.log(`Created optimized zip: ${outputPath}`);
 }
