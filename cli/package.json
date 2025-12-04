@@ -4,8 +4,10 @@
   "description": "Bootstrap a Vite + React project with sensible SEO/SSG defaults",
   "type": "module",
   "bin": {
-    "vite-seo-bootstrap": "./bin/cli.mjs"
-    ,
+    "vite-seo-bootstrap": "./bin/cli.mjs",
     "vite-seo-bootstrap-zip": "./bin/apply-zip.mjs"
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.16"
   }
 }

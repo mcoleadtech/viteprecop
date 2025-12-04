@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import AdmZip from 'adm-zip';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -16,7 +17,6 @@ function usage() {
 }
 
 // Helper per executar comandes de forma segura sense shell
-// Això evita injecció de comandes (ex: "file.zip; rm -rf /")
 function runCommand(command, args, options = {}) {
   const result = spawnSync(command, args, { stdio: 'inherit', ...options });
   if (result.error) {
@@ -57,9 +57,10 @@ async function main() {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vite-seo-bootstrap-zip-'));
 
   try {
-    // 1. Unzip segur (sense shell interpolation)
+    // 1. Unzip segur amb adm-zip
     console.log('· Extracting zip...');
-    runCommand('unzip', ['-qq', zipPath, '-d', tempDir]);
+    const zip = new AdmZip(zipPath);
+    zip.extractAllTo(tempDir, true);
   } catch (err) {
     console.error(`Error extracting zip: ${err.message}`);
     // Netejar abans de sortir
@@ -155,11 +156,13 @@ async function main() {
   const outputPath = path.join(baseDir, outputName);
 
   try {
-    // 3. Zip de sortida segur
-    // IMPORTANT: Comprimim des de projectRoot per eliminar la carpeta niada si n'hi havia una.
-    // Així el ZIP resultant sempre té el package.json a l'arrel (estructura neta).
+    // 3. Zip de sortida segur amb adm-zip
     console.log('· Compressing output...');
-    runCommand('zip', ['-rq', outputPath, '.'], { cwd: projectRoot });
+    const zip = new AdmZip();
+    // Afegim la carpeta local (projectRoot) al zip.
+    // addLocalFolder afegeix el contingut de la carpeta a l'arrel del zip si el segon argument és buit.
+    zip.addLocalFolder(projectRoot);
+    zip.writeZip(outputPath);
   } catch (err) {
     console.error(`Error creating output zip: ${err.message}`);
     process.exit(1);

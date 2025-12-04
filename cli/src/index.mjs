@@ -75,11 +75,15 @@ export async function run({ projectRoot, domain, strategy = 'react' }) {
       const { applyPreactPrerender } = await import('./generators/preact-prerender.mjs');
       await applyPreactPrerender({ projectRoot, pkg, domain });
     } else {
+      // Analyze project to detect routes
+      const { analyzeProject } = await import('./analyzer.mjs');
+      const { routes } = await analyzeProject(projectRoot);
+
       // Default to React SSG. First apply generic SEO bootstrap, then
       // wire up SSG via vite-react-ssg.
-      await applyReactSsgSeo({ projectRoot, pkg, domain });
+      await applyReactSsgSeo({ projectRoot, pkg, domain, routes });
       const { applyReactSsgWiring } = await import('./generators/react-ssg-wiring.mjs');
-      await applyReactSsgWiring({ projectRoot, pkg, domain });
+      await applyReactSsgWiring({ projectRoot, pkg, domain, routes });
     }
   } catch (err) {
     throw err;

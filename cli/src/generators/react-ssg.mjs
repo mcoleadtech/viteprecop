@@ -39,12 +39,12 @@ const SEO_DEV_DEPENDENCIES = {
  * @param {Object} opts.pkg Parsed package.json of the project
  * @param {string} opts.domain Base URL used in sitemap and canonical tags
  */
-export async function applyReactSsgSeo({ projectRoot, pkg, domain }) {
+export async function applyReactSsgSeo({ projectRoot, pkg, domain, routes = ['/'] }) {
   await updatePackageJson({ projectRoot, pkg });
   await ensureSeoComponent({ projectRoot });
-  await ensureSitemapHelper({ projectRoot, domain });
+  await ensureSitemapHelper({ projectRoot, domain, routes });
   await ensureRobotsTxt({ projectRoot, domain });
-  await updateViteConfig({ projectRoot, domain });
+  await updateViteConfig({ projectRoot, domain, routes });
   await writeSeoGuide({ projectRoot, domain, projectName: pkg.name || 'Your Vite App' });
   await ensureDotFiles({ projectRoot, domain });
 }
@@ -97,11 +97,11 @@ async function updatePackageJson({ projectRoot, pkg }) {
 async function ensureSeoComponent({ projectRoot }) {
   const componentsDir = path.join(projectRoot, 'src', 'components');
   await fs.mkdir(componentsDir, { recursive: true });
-  
+
   // CAMBIO IMPORTANTE: Usamos SEO.tsx (mayúsculas) para coincidir con tu importación
   // A veces el sistema de archivos distingue mayúsculas, es mejor ser consistente.
-  const target = path.join(componentsDir, 'SEO.tsx'); 
-  
+  const target = path.join(componentsDir, 'SEO.tsx');
+
   // CAMBIO IMPORTANTE: Exportamos como "export const SEO" (named export)
   // en lugar de "export default Seo", para que funcione "import { SEO } from ..."
   const contents = `import { Helmet } from 'react-helmet-async';
@@ -150,10 +150,14 @@ export default SEO;
  *
  * @param {Object} opts
  */
-async function ensureSitemapHelper({ projectRoot, domain }) {
+async function ensureSitemapHelper({ projectRoot, domain, routes }) {
   const seoDir = path.join(projectRoot, 'src', 'seo');
   await fs.mkdir(seoDir, { recursive: true });
   const target = path.join(seoDir, 'sitemap.ts');
+
+  // Convert routes array to string representation for the file
+  const routesString = JSON.stringify(routes, null, 2);
+
   const contents = `export const BASE_URL = '${domain}';
 
 /**
@@ -161,7 +165,8 @@ async function ensureSitemapHelper({ projectRoot, domain }) {
  * sitemap. You might fetch data from an API or read local files here.
  */
 export async function dynamicRoutes(): Promise<string[]> {
-  return [];
+  // Auto-detected routes from analysis
+  return ${routesString};
 }
 
 /**
@@ -204,7 +209,7 @@ Disallow: /private
  *
  * @param {Object} opts
  */
-async function updateViteConfig({ projectRoot, domain }) {
+async function updateViteConfig({ projectRoot, domain, routes }) {
   const tsConfig = path.join(projectRoot, 'vite.config.ts');
   const jsConfig = path.join(projectRoot, 'vite.config.js');
   let target;
@@ -215,11 +220,14 @@ async function updateViteConfig({ projectRoot, domain }) {
     target = jsConfig;
   }
   const baseUrl = domain.replace(/\/$/, '');
-  
+
   // CORRECCIÓN COMPLETA:
   // 1. Alias para limpiar versiones (sonner@x.x.x) y rutas de figma (figma:asset/...).
   // 2. ssr.noExternal para 'react-helmet-async' para evitar errores de exportación.
   // 3. Eliminado manualChunks para evitar conflictos con dependencias externas en SSR.
+
+  // Generate routes array string for config
+  const routesConfig = routes.map(r => `{ path: '${r}', name: '${r === '/' ? 'Home' : r.slice(1)}' }`).join(',\n  ');
 
   const contents = `import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
@@ -230,7 +238,7 @@ import path from 'path';
 // Define your application routes here. This array is used by vite-ssg to
 // prerender each route. Add entries like { path: '/about', name: 'About' }.
 const routes = [
-  { path: '/', name: 'Home' }
+  ${routesConfig}
 ];
 
 export default defineConfig({

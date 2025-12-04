@@ -17,7 +17,7 @@ import path from 'path';
  * @param {string} opts.projectRoot Absolute path to the project root
  * @param {Object} opts.pkg The parsed package.json (mutated as needed)
  */
-export async function applyReactSsgWiring({ projectRoot, pkg }) {
+export async function applyReactSsgWiring({ projectRoot, pkg, routes: detectedRoutes = ['/'] }) {
   const pkgPath = path.join(projectRoot, 'package.json');
   // Ensure dependencies objects exist
   pkg.dependencies = pkg.dependencies || {};
@@ -53,24 +53,36 @@ export async function applyReactSsgWiring({ projectRoot, pkg }) {
     updatedPkg = true;
   }
 
+  // Ensure package.json has "type": "module" to avoid warnings/errors
+  if (pkg.type !== 'module') {
+    pkg.type = 'module';
+    updatedPkg = true;
+  }
+
   if (updatedPkg) {
     await fs.writeFile(pkgPath, JSON.stringify(pkg, null, 2), 'utf8');
-    console.log('· Updated package.json with SSG dependencies and scripts');
+    console.log('· Updated package.json with SSG dependencies, scripts, and type: module');
   }
 
   // Create a simple routes definition file
   const srcDir = path.join(projectRoot, 'src');
   await fs.mkdir(srcDir, { recursive: true });
   const routesFile = path.join(srcDir, 'routes.jsx');
+
+  // Generate routes array for routes.jsx
+  // We map all detected routes to <App /> because we assume App handles the routing internally
+  // or is the main entry point.
+  const routesArrayContent = detectedRoutes.map(r => `  {
+    path: '${r}',
+    element: <App />,
+  },`).join('\n');
+
   const routesContent = `import React from 'react';
 import App from './App';
 
 // Minimal route definition for vite-react-ssg.
 const routes = [
-  {
-    path: '/',
-    element: <App />,
-  },
+${routesArrayContent}
 ];
 
 export default routes;
@@ -78,9 +90,32 @@ export default routes;
   await fs.writeFile(routesFile, routesContent, 'utf8');
   console.log('· Wrote src/routes.jsx');
 
+  // Detect root container ID from index.html
+  const indexHtmlPath = path.join(projectRoot, 'index.html');
+  let rootId = 'root'; // default
+  try {
+    const indexHtml = await fs.readFile(indexHtmlPath, 'utf8');
+    // Simple regex to find the first div with an id that looks like a root container
+    // We look for id="root", id="app", or id="main"
+    const idMatch = indexHtml.match(/<div[^>]*id=["'](root|app|main)["'][^>]*>/i);
+    if (idMatch && idMatch[1]) {
+      rootId = idMatch[1];
+      console.log(`· Detected root container ID: "${rootId}"`);
+    } else {
+      // Fallback: try to find ANY div with an id if the standard ones aren't found
+      const anyIdMatch = indexHtml.match(/<div[^>]*id=["']([^"']+)["'][^>]*>/i);
+      if (anyIdMatch && anyIdMatch[1]) {
+        rootId = anyIdMatch[1];
+        console.log(`· Detected root container ID: "${rootId}" (fallback)`);
+      }
+    }
+  } catch (err) {
+    console.log('· Could not read index.html to detect root ID, defaulting to "root"');
+  }
+
   // Create a new SSG entry file with window mock for SSR safety
   const entryFile = path.join(srcDir, 'main.ssg.jsx');
-  
+
   // MODIFICACIÓN CRÍTICA: Añadimos un polyfill para simular el navegador en el servidor.
   // Esto define 'window', 'document', etc. si no existen, evitando errores como "window is not defined".
   const entryContent = `import { ViteReactSSG } from 'vite-react-ssg';
@@ -90,43 +125,54 @@ import routes from './routes.jsx';
 // Esto evita que la compilación falle cuando las librerías intentan acceder a window/document
 if (typeof window === 'undefined') {
   const noop = () => {};
-  global.window = {
-    matchMedia: () => ({ matches: false, addListener: noop, removeListener: noop }),
-    scrollTo: noop,
-    addEventListener: noop,
-    removeEventListener: noop,
-    location: { href: '', origin: '' },
-    localStorage: { getItem: () => null, setItem: noop, removeItem: noop },
-    sessionStorage: { getItem: () => null, setItem: noop, removeItem: noop },
-  };
-  global.document = {
-    createElement: () => ({ style: {}, setAttribute: noop, appendChild: noop, classList: { add: noop, remove: noop } }),
-    head: { appendChild: noop },
-    body: { appendChild: noop, classList: { add: noop, remove: noop } },
-    addEventListener: noop,
-    removeEventListener: noop,
-    activeElement: { blur: noop, nodeName: '' },
-    querySelector: () => null,
-    querySelectorAll: () => [],
-    getElementById: () => null,
-    createEvent: () => ({ initEvent: noop }),
-    cookie: '',
-    documentElement: { style: {} },
-  };
-  global.navigator = { userAgent: 'node' };
-  global.requestAnimationFrame = (callback) => setTimeout(callback, 0);
-  global.cancelAnimationFrame = (id) => clearTimeout(id);
+  if (!global.window) {
+    global.window = {
+      matchMedia: () => ({ matches: false, addListener: noop, removeListener: noop }),
+      scrollTo: noop,
+      addEventListener: noop,
+      removeEventListener: noop,
+      location: { href: '', origin: '', pathname: '/', search: '', hash: '' },
+      localStorage: { getItem: () => null, setItem: noop, removeItem: noop },
+      sessionStorage: { getItem: () => null, setItem: noop, removeItem: noop },
+    };
+  }
+  if (!global.document) {
+    global.document = {
+      createElement: () => ({ style: {}, setAttribute: noop, appendChild: noop, classList: { add: noop, remove: noop } }),
+      head: { appendChild: noop },
+      body: { appendChild: noop, classList: { add: noop, remove: noop } },
+      addEventListener: noop,
+      removeEventListener: noop,
+      activeElement: { blur: noop, nodeName: '' },
+      querySelector: () => null,
+      querySelectorAll: () => [],
+      getElementById: () => null,
+      createEvent: () => ({ initEvent: noop }),
+      cookie: '',
+      documentElement: { style: {} },
+    };
+  }
+  // Node 22+ has a read-only global.navigator, so we only define it if missing
+  if (!global.navigator) {
+    global.navigator = { userAgent: 'node' };
+  }
+  if (!global.sessionStorage) global.sessionStorage = global.window.sessionStorage;
+  if (!global.localStorage) global.localStorage = global.window.localStorage;
+  if (!global.requestAnimationFrame) global.requestAnimationFrame = (callback) => setTimeout(callback, 0);
+  if (!global.cancelAnimationFrame) global.cancelAnimationFrame = (id) => clearTimeout(id);
 }
 // ------------------------------------------------
 
 // Export createRoot for vite-react-ssg to bootstrap the app.
-export const createRoot = ViteReactSSG({ routes });
+export const createRoot = ViteReactSSG({ 
+  routes,
+  rootContainer: document.getElementById('${rootId}') 
+});
 `;
   await fs.writeFile(entryFile, entryContent, 'utf8');
   console.log('· Wrote src/main.ssg.jsx');
 
   // Rewrite the script tag in index.html to point to main.ssg.jsx
-  const indexHtmlPath = path.join(projectRoot, 'index.html');
   try {
     let indexHtml = await fs.readFile(indexHtmlPath, 'utf8');
     // Replace any script that loads main.tsx or main.jsx
